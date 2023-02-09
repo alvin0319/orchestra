@@ -5,7 +5,10 @@ import com.sedmelluq.discord.lavaplayer.source.AudioSourceManagers
 import com.sedmelluq.discord.lavaplayer.source.youtube.YoutubeAudioSourceManager
 import com.sedmelluq.discord.lavaplayer.source.youtube.YoutubeAudioTrack
 import com.sedmelluq.discord.lavaplayer.source.youtube.YoutubeSearchMusicProvider
+import com.sedmelluq.discord.lavaplayer.tools.FriendlyException
+import com.sedmelluq.discord.lavaplayer.track.AudioPlaylist
 import com.sedmelluq.discord.lavaplayer.track.AudioReference
+import com.sedmelluq.discord.lavaplayer.track.AudioTrack
 import com.sedmelluq.discord.lavaplayer.track.BasicAudioPlaylist
 import dev.minjae.orchestra.audio.AudioLoadResultHandler
 import dev.minjae.orchestra.audio.AudioPlayerSendingHandler
@@ -13,6 +16,7 @@ import dev.minjae.orchestra.audio.source.ProxiedYouTubeSearchMusicProvider
 import dev.minjae.orchestra.command.BaseCommand
 import dev.minjae.orchestra.command.defaults.PlayCommand
 import dev.minjae.orchestra.command.defaults.QueueCommand
+import dev.minjae.orchestra.command.defaults.SearchCommand
 import dev.minjae.orchestra.command.defaults.StopCommand
 import dev.minjae.orchestra.config.BotConfig
 import dev.minjae.orchestra.player.PlayerData
@@ -40,6 +44,7 @@ import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.TimeUnit
+import java.util.function.Consumer
 
 class Bot(val config: BotConfig) {
 
@@ -93,6 +98,7 @@ class Bot(val config: BotConfig) {
         registerCommands(
             PlayCommand(this),
             QueueCommand(this),
+            SearchCommand(this),
             StopCommand(this)
         )
     }
@@ -166,7 +172,7 @@ class Bot(val config: BotConfig) {
         connections[guild.idLong] = audioChannel.idLong
     }
 
-    fun searchSong(
+    fun searchAndLoadSong(
         query: String,
         messageChannel: GuildMessageChannel,
         audioChannel: AudioChannel,
@@ -199,6 +205,55 @@ class Bot(val config: BotConfig) {
         } else {
             audioPlayerManager.loadItem("ytsearch:$query", audioLoadResultHandler)
         }
+    }
+
+    fun searchSong(query: String, youtubeMusic: Boolean = false, limit: Int = 10, success: Consumer<List<AudioTrack>>) {
+        if (youtubeMusic) {
+            CoroutineScope(Dispatchers.IO).launch {
+                val tracks = youtubeSearchMusicProvider.loadSearchMusicResult(query) {
+                    YoutubeAudioTrack(it, youtubeSearchManager)
+                }
+                when (tracks) {
+                    AudioReference.NO_TRACK -> success.accept(emptyList())
+                    is BasicAudioPlaylist -> success.accept(tracks.tracks.take(limit))
+                    else -> throw IllegalStateException("Unknown track type: ${tracks::class.java}")
+                }
+            }
+        } else {
+            audioPlayerManager.loadItem(
+                "ytsearch:$query",
+                object : com.sedmelluq.discord.lavaplayer.player.AudioLoadResultHandler {
+                    override fun trackLoaded(track: AudioTrack) {
+                        success.accept(listOf(track))
+                    }
+
+                    override fun playlistLoaded(playlist: AudioPlaylist) {
+                        success.accept(playlist.tracks.take(limit))
+                    }
+
+                    override fun noMatches() {
+                        success.accept(emptyList())
+                    }
+
+                    override fun loadFailed(exception: FriendlyException) {
+                        success.accept(emptyList())
+                    }
+                }
+            )
+        }
+    }
+
+    fun playTrack(audioChannel: AudioChannel, messageChannel: GuildMessageChannel, track: AudioTrack) {
+        if (!hasOpenConnection(audioChannel.guild)) {
+            try {
+                openAudioConnection(messageChannel, audioChannel)
+            } catch (e: InsufficientPermissionException) {
+                messageChannel.sendMessage("I don't have enough permissions to connect to the voice channel!")
+                    .queue(null) {}
+                return
+            }
+        }
+        AudioLoadResultHandler(messageChannel).trackLoaded(track)
     }
 
     fun shutdown() {

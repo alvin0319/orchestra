@@ -29,6 +29,7 @@ class QueueCommand(bot: Bot) : BaseCommand(bot, "queue", "Show the current queue
                             position++
                             desc.appendln("$position. ${track.info.title}")
                         }
+                        description = desc.toString()
                     }
                 ).queue(null) {}
             }
