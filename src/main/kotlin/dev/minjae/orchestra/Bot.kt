@@ -42,6 +42,8 @@ import net.dv8tion.jda.api.utils.MemberCachePolicy
 import net.dv8tion.jda.api.utils.cache.CacheFlag
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
+import java.net.MalformedURLException
+import java.net.URL
 import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.TimeUnit
 import java.util.function.Consumer
@@ -188,7 +190,12 @@ class Bot(val config: BotConfig) {
             }
         }
         val audioLoadResultHandler = AudioLoadResultHandler(messageChannel)
-        if (youtubeMusic) {
+        if (isURL(query)) {
+            audioPlayerManager.loadItem(
+                query,
+                audioLoadResultHandler
+            )
+        } else if (youtubeMusic) {
             CoroutineScope(Dispatchers.IO).launch {
                 val track = youtubeSearchMusicProvider.loadSearchMusicResult(query) {
                     YoutubeAudioTrack(it, youtubeSearchManager)
@@ -208,7 +215,12 @@ class Bot(val config: BotConfig) {
     }
 
     fun searchSong(query: String, youtubeMusic: Boolean = false, limit: Int = 10, success: Consumer<List<AudioTrack>>) {
-        if (youtubeMusic) {
+        if (isURL(query)) {
+            audioPlayerManager.loadItem(
+                query,
+                SearchOnlyAudioLoadResultHandler(success)
+            )
+        } else if (youtubeMusic) {
             CoroutineScope(Dispatchers.IO).launch {
                 val tracks = youtubeSearchMusicProvider.loadSearchMusicResult(query) {
                     YoutubeAudioTrack(it, youtubeSearchManager)
@@ -222,23 +234,7 @@ class Bot(val config: BotConfig) {
         } else {
             audioPlayerManager.loadItem(
                 "ytsearch:$query",
-                object : com.sedmelluq.discord.lavaplayer.player.AudioLoadResultHandler {
-                    override fun trackLoaded(track: AudioTrack) {
-                        success.accept(listOf(track))
-                    }
-
-                    override fun playlistLoaded(playlist: AudioPlaylist) {
-                        success.accept(playlist.tracks.take(limit))
-                    }
-
-                    override fun noMatches() {
-                        success.accept(emptyList())
-                    }
-
-                    override fun loadFailed(exception: FriendlyException) {
-                        success.accept(emptyList())
-                    }
-                }
+                SearchOnlyAudioLoadResultHandler(success)
             )
         }
     }
@@ -261,5 +257,34 @@ class Bot(val config: BotConfig) {
         audioPlayerManager.shutdown()
         youtubeSearchManager.shutdown()
         logger.info("Bot shutdown complete")
+    }
+
+    internal class SearchOnlyAudioLoadResultHandler(val success: Consumer<List<AudioTrack>>) : com.sedmelluq.discord.lavaplayer.player.AudioLoadResultHandler {
+        override fun trackLoaded(track: AudioTrack) {
+            success.accept(listOf(track))
+        }
+
+        override fun playlistLoaded(playlist: AudioPlaylist) {
+            success.accept(playlist.tracks)
+        }
+
+        override fun noMatches() {
+            success.accept(emptyList())
+        }
+
+        override fun loadFailed(exception: FriendlyException) {
+            success.accept(emptyList())
+        }
+    }
+
+    companion object {
+        fun isURL(string: String): Boolean {
+            return try {
+                URL(string)
+                true
+            } catch (e: MalformedURLException) {
+                false
+            }
+        }
     }
 }
