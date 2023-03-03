@@ -259,7 +259,7 @@ class Bot(val config: BotConfig) {
         logger.info("Bot shutdown complete")
     }
 
-    internal class SearchOnlyAudioLoadResultHandler(val success: Consumer<List<AudioTrack>>) : com.sedmelluq.discord.lavaplayer.player.AudioLoadResultHandler {
+    internal class SearchOnlyAudioLoadResultHandler(private val success: Consumer<List<AudioTrack>>) : com.sedmelluq.discord.lavaplayer.player.AudioLoadResultHandler {
         override fun trackLoaded(track: AudioTrack) {
             success.accept(listOf(track))
         }
