@@ -26,7 +26,7 @@ repositories {
 dependencies {
     testImplementation(kotlin("test"))
     implementation("net.dv8tion:JDA:5.0.0-beta.3")
-    implementation("com.github.walkyst:lavaplayer-fork:e833a69a10c852dfeaecf1c43b3ca0732c703baa")
+    implementation("com.github.walkyst:lavaplayer-fork:ef075855da647c6c5f60f3f08790c26eedb06e51")
     implementation("com.fasterxml.jackson.module:jackson-module-kotlin:2.14.2")
     implementation("com.fasterxml.jackson.module:jackson-module-blackbird:2.14.2")
     implementation("ch.qos.logback:logback-classic:1.4.5")
